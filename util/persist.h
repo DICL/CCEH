@@ -28,7 +28,7 @@ inline void mfence(void) {
 }
 
 inline void clflush(char* data, size_t len) {
-  volatile char *ptr = (char*)((unsigned long)data & (~kCacheLineSize-1));
+  volatile char *ptr = (char*)((unsigned long)data & (~(kCacheLineSize-1)));
   mfence();
   for (; ptr < data+len; ptr+=kCacheLineSize) {
     unsigned long etcs = ReadTSC() + (unsigned long) (kWriteLatencyInNS*CPU_FREQ_MHZ/1000);
