@@ -375,34 +375,14 @@ bool CCEH::Recovery(void) {
   while (i < dir.capacity) {
     size_t depth_cur = dir._[i]->local_depth;
     size_t stride = pow(2, global_depth - depth_cur);
-    size_t j = i + stride;  // buddy index
-    if (j == dir.capacity) break;
-    size_t depth_buddy = dir._[j]->local_depth;
-    if (depth_cur < depth_buddy) {  // left half
-      for (size_t k = j-1; i < k; k--) {
-        if (dir._[k]->local_depth != depth_cur) {
-          dir._[k]->local_depth = depth_cur;
-          recovered = true;
-        }
-      }
-    } else {
-      if (depth_cur == depth_buddy) {  // right half
-        for (size_t k = j+1; k < j+stride; k++) {
-          if (dir._[k] != dir._[j]) {
-            dir._[k] = dir._[j];
-            recovered = true;
-          }
-        }
-      } else {  // shrink
-        for (size_t k = j+stride-1; j <= k; k--) {
-          if (dir._[k] == dir._[j+stride-1]) {
-            dir._[k] = dir._[j+stride-1];
-            recovered = true;
-          }
-        }
+    size_t buddy = i + stride;
+    if (buddy == dir.capacity) break;
+    for (int j = buddy - 1; i < j; j--) {
+      if (dir._[j]->local_depth != depth_cur) {
+        dir._[j] = dir._[i];
       }
     }
-    i = i + pow(2, global_depth - (depth_cur-1));
+    i = i+stride;
   }
   if (recovered) {
     clflush((char*)&dir._[0], sizeof(void*)*dir.capacity);
