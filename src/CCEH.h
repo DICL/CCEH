@@ -12,7 +12,7 @@ constexpr size_t kMask = (1 << kSegmentBits)-1;
 constexpr size_t kShift = kSegmentBits;
 constexpr size_t kSegmentSize = (1 << kSegmentBits) * 16 * 4;
 constexpr size_t kNumPairPerCacheLine = 4;
-constexpr size_t kNumCacheLine = kCacheLineSize/sizeof(Pair);
+constexpr size_t kNumCacheLine = 4;
 
 struct Segment {
   static const size_t kNumSlot = kSegmentSize/sizeof(Pair);
@@ -53,21 +53,24 @@ struct Segment {
 };
 
 struct Directory {
-  static const size_t kDefaultDirectorySize = 1024;
+  static const size_t kDefaultDepth = 10;
   Segment** _;
   size_t capacity;
+  size_t depth;
   bool lock;
   int sema = 0 ;
 
   Directory(void) {
-    capacity = kDefaultDirectorySize;
+    depth = kDefaultDepth;
+    capacity = pow(2, depth);
     _ = new Segment*[capacity];
     lock = false;
     sema = 0;
   }
 
-  Directory(size_t size) {
-    capacity = size;
+  Directory(size_t _depth) {
+    depth = _depth;
+    capacity = pow(2, depth);
     _ = new Segment*[capacity];
     lock = false;
     sema = 0;
@@ -105,6 +108,10 @@ class CCEH : public Hash {
     size_t Capacity(void);
     bool Recovery(void);
 
+    void print_meta(void) {
+      std::cout << dir->depth << "," << dir->capacity << "," << Capacity() << "," << Capacity()/Segment::kNumSlot << std::endl;
+    }
+
     void* operator new(size_t size) {
       void *ret;
       posix_memalign(&ret, 64, size);
@@ -113,7 +120,7 @@ class CCEH : public Hash {
 
   private:
     size_t global_depth;
-    Directory dir;
+    Directory* dir;
 };
 
 #endif  // EXTENDIBLE_PTR_H_
