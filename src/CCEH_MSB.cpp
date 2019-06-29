@@ -22,8 +22,9 @@ int Segment::Insert(Key_t& key, Value_t value, size_t loc, size_t key_hash) {
   Key_t LOCK = INVALID;
   for (unsigned i = 0; i < kNumPairPerCacheLine * kNumCacheLine; ++i) {
     auto slot = (loc + i) % kNumSlot;
+    auto _key = _[slot].key;
     if ((h(&_[slot].key,sizeof(Key_t)) >> (8*sizeof(key_hash)-local_depth)) != pattern) {
-      _[slot].key = INVALID;
+      CAS(&_[slot].key, &_key, INVALID);
     }
     if (CAS(&_[slot].key, &LOCK, SENTINEL)) {
       _[slot].value = value;
