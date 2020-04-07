@@ -109,7 +109,7 @@ class CCEH : public Hash {
     bool Recovery(void);
 
     void print_meta(void) {
-      std::cout << dir->depth << "," << dir->capacity << "," << Capacity() << "," << Capacity()/Segment::kNumSlot << std::endl;
+//      std::cout << dir->depth << "," << dir->capacity << "," << Capacity() << "," << Capacity()/Segment::kNumSlot << std::endl;
     }
 
     void* operator new(size_t size) {

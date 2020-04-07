@@ -128,20 +128,20 @@ Segment** Segment::Split(void) {
 
 
 CCEH::CCEH(void)
-: dir{1}, global_depth{0}
+: dir{new Directory(0)}, global_depth{0}
 {
-  for (unsigned i = 0; i < dir.capacity; ++i) {
-    dir._[i] = new Segment(global_depth);
-    dir._[i]->pattern = i;
+  for (unsigned i = 0; i < dir->capacity; ++i) {
+    dir->_[i] = new Segment(global_depth);
+    dir->_[i]->pattern = i;
   }
 }
 
 CCEH::CCEH(size_t initCap)
-: dir{initCap}, global_depth{static_cast<size_t>(log2(initCap))}
+: dir{new Directory(log2(initCap))}, global_depth{static_cast<size_t>(log2(initCap))}
 {
-  for (unsigned i = 0; i < dir.capacity; ++i) {
-    dir._[i] = new Segment(global_depth);
-    dir._[i]->pattern = i;
+  for (unsigned i = 0; i < dir->capacity; ++i) {
+    dir->_[i] = new Segment(global_depth);
+    dir->_[i]->pattern = i;
   }
 }
 
@@ -180,8 +180,8 @@ STARTOVER:
   auto y = (key_hash >> (sizeof(key_hash)*8-kShift)) * kNumPairPerCacheLine;
 
 RETRY:
-  auto x = (key_hash % dir.capacity);
-  auto target = dir._[x];
+  auto x = (key_hash % dir->capacity);
+  auto target = dir->_[x];
   auto ret = target->Insert(key, value, y, key_hash);
 
   if (ret == 1) {
@@ -198,29 +198,29 @@ RETRY:
     s[1]->pattern = s[0]->pattern + (1 << (s[0]->local_depth-1));
 
     // Directory management
-    while (!dir.Acquire()) {
+    while (!dir->Acquire()) {
       asm("nop");
     }
     { // CRITICAL SECTION - directory update
-      x = (key_hash % dir.capacity);
+      x = (key_hash % dir->capacity);
 #ifdef INPLACE
-      if (dir._[x]->local_depth-1 < global_depth) {  // normal split
+      if (dir->_[x]->local_depth-1 < global_depth) {  // normal split
 #else
-      if (dir._[x]->local_depth < global_depth) {  // normal split
+      if (dir->_[x]->local_depth < global_depth) {  // normal split
 #endif
-        dir.LSBUpdate(s[0]->local_depth, global_depth, dir.capacity, x, s);
+        dir->LSBUpdate(s[0]->local_depth, global_depth, dir->capacity, x, s);
       } else {  // directory doubling
-        auto d = dir._;
-        auto _dir = new Segment*[dir.capacity*2];
-        memcpy(_dir, d, sizeof(Segment*)*dir.capacity);
-        memcpy(_dir+dir.capacity, d, sizeof(Segment*)*dir.capacity);
+        auto d = dir->_;
+        auto _dir = new Segment*[dir->capacity*2];
+        memcpy(_dir, d, sizeof(Segment*)*dir->capacity);
+        memcpy(_dir+dir->capacity, d, sizeof(Segment*)*dir->capacity);
         _dir[x] = s[0];
-        _dir[x+dir.capacity] = s[1];
-        clflush((char*)&dir._[0], sizeof(Segment*)*dir.capacity);
-        dir._ = _dir;
-        clflush((char*)&dir._, sizeof(void*));
-        dir.capacity *= 2;
-        clflush((char*)&dir.capacity, sizeof(size_t));
+        _dir[x+dir->capacity] = s[1];
+        clflush((char*)&dir->_[0], sizeof(Segment*)*dir->capacity);
+        dir->_ = _dir;
+        clflush((char*)&dir->_, sizeof(void*));
+        dir->capacity *= 2;
+        clflush((char*)&dir->capacity, sizeof(size_t));
         global_depth += 1;
         clflush((char*)&global_depth, sizeof(global_depth));
         delete d;
@@ -230,7 +230,7 @@ RETRY:
       s[0]->sema = 0;
 #endif
     }  // End of critical section
-    while (!dir.Release()) {
+    while (!dir->Release()) {
       asm("nop");
     }
     goto RETRY;
@@ -238,19 +238,19 @@ RETRY:
     // Insert(key, value);
     goto STARTOVER;
   } else {
-    clflush((char*)&dir._[x]->_[y], 64);
+    clflush((char*)&dir->_[x]->_[y], 64);
   }
 }
 
 // This function does not allow resizing
 bool CCEH::InsertOnly(Key_t& key, Value_t value) {
   auto key_hash = h(&key, sizeof(key));
-  auto x = (key_hash % dir.capacity);
+  auto x = (key_hash % dir->capacity);
   auto y = (key_hash >> (sizeof(key_hash)*8-kShift)) * kNumPairPerCacheLine;
 
-  auto ret = dir._[x]->Insert(key, value, y, key_hash);
+  auto ret = dir->_[x]->Insert(key, value, y, key_hash);
   if (ret == 0) {
-    clflush((char*)&dir._[x]->_[y], 64);
+    clflush((char*)&dir->_[x]->_[y], 64);
     return true;
   }
 
@@ -264,16 +264,16 @@ bool CCEH::Delete(Key_t& key) {
 
 Value_t CCEH::Get(Key_t& key) {
   auto key_hash = h(&key, sizeof(key));
-  const size_t mask = dir.capacity-1;
+  const size_t mask = dir->capacity-1;
   auto x = (key_hash & mask);
   auto y = (key_hash >> (sizeof(key_hash)*8-kShift)) * kNumPairPerCacheLine;
 
-  auto dir_ = dir._[x];
+  auto dir_ = dir->_[x];
 
 #ifdef INPLACE
-  auto sema = dir._[x]->sema;
-  while (!CAS(&dir._[x]->sema, &sema, sema+1)) {
-    sema = dir._[x]->sema;
+  auto sema = dir->_[x]->sema;
+  while (!CAS(&dir->_[x]->sema, &sema, sema+1)) {
+    sema = dir->_[x]->sema;
   }
 #endif
 
@@ -281,9 +281,9 @@ Value_t CCEH::Get(Key_t& key) {
     auto slot = (y+i) % Segment::kNumSlot;
     if (dir_->_[slot].key == key) {
 #ifdef INPLACE
-      sema = dir._[x]->sema;
-      while (!CAS(&dir._[x]->sema, &sema, sema-1)) {
-        sema = dir._[x]->sema;
+      sema = dir->_[x]->sema;
+      while (!CAS(&dir->_[x]->sema, &sema, sema-1)) {
+        sema = dir->_[x]->sema;
       }
 #endif
       return dir_->_[slot].value;
@@ -291,9 +291,9 @@ Value_t CCEH::Get(Key_t& key) {
   }
 
 #ifdef INPLACE
-  sema = dir._[x]->sema;
-  while (!CAS(&dir._[x]->sema, &sema, sema-1)) {
-    sema = dir._[x]->sema;
+  sema = dir->_[x]->sema;
+  while (!CAS(&dir->_[x]->sema, &sema, sema-1)) {
+    sema = dir->_[x]->sema;
   }
 #endif
   return NONE;
@@ -302,8 +302,8 @@ Value_t CCEH::Get(Key_t& key) {
 double CCEH::Utilization(void) {
   size_t sum = 0;
   std::unordered_map<Segment*, bool> set;
-  for (size_t i = 0; i < dir.capacity; ++i) {
-    set[dir._[i]] = true;
+  for (size_t i = 0; i < dir->capacity; ++i) {
+    set[dir->_[i]] = true;
   }
   for (auto& elem: set) {
     for (unsigned i = 0; i < Segment::kNumSlot; ++i) {
@@ -315,8 +315,8 @@ double CCEH::Utilization(void) {
 
 size_t CCEH::Capacity(void) {
   std::unordered_map<Segment*, bool> set;
-  for (size_t i = 0; i < dir.capacity; ++i) {
-    set[dir._[i]] = true;
+  for (size_t i = 0; i < dir->capacity; ++i) {
+    set[dir->_[i]] = true;
   }
   return set.size() * Segment::kNumSlot;
 }
@@ -338,14 +338,14 @@ bool CCEH::Recovery(void) {
 // for debugging
 Value_t CCEH::FindAnyway(Key_t& key) {
   using namespace std;
-  for (size_t i = 0; i < dir.capacity; ++i) {
+  for (size_t i = 0; i < dir->capacity; ++i) {
      for (size_t j = 0; j < Segment::kNumSlot; ++j) {
-       if (dir._[i]->_[j].key == key) {
+       if (dir->_[i]->_[j].key == key) {
          auto key_hash = h(&key, sizeof(key));
          auto x = (key_hash >> (8*sizeof(key_hash)-global_depth));
          auto y = (key_hash & kMask) * kNumPairPerCacheLine;
          cout << bitset<32>(i) << endl << bitset<32>((x>>1)) << endl << bitset<32>(x) << endl;
-         return dir._[i]->_[j].value;
+         return dir->_[i]->_[j].value;
        }
      }
   }

@@ -24,6 +24,7 @@ struct Pair {
   Pair& operator=(const Pair& other) {
     key = other.key;
     value = other.value;
+    return *this;
   }
 
   void* operator new(size_t size) {
