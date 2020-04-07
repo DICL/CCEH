@@ -91,6 +91,7 @@ Value_t LinearProbingHash::Get(Key_t& key) {
     if (dict[id].key == INVALID) return NONE;
     if (dict[id].key == key) return std::move(dict[id].value);
   }
+  return NONE;
 }
 
 double LinearProbingHash::Utilization(void) {

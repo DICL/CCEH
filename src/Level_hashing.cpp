@@ -35,8 +35,8 @@ LevelHashing::~LevelHashing(void){
 
 LevelHashing::LevelHashing(size_t _levels)
   : levels{_levels},
-  addr_capacity{pow(2, levels)},
-  total_capacity{pow(2, levels) + pow(2, levels-1)},
+  addr_capacity{(uint64_t)pow(2, levels)},
+  total_capacity{(uint64_t)pow(2, levels) + (uint64_t)pow(2, levels-1)},
   resize_num{0}
 {
   locksize = 256;
@@ -168,6 +168,7 @@ RETRY:
 }
 
 bool LevelHashing::InsertOnly(Key_t& key, Value_t value) {
+	return false;
 }
 
 void LevelHashing::resize(void) {
