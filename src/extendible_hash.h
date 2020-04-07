@@ -5,7 +5,7 @@
 #include <vector>
 #include "util/pair.h"
 #include "src/hash.h"
-#include "/home/nammh/quartz/src/lib/pmalloc.h"
+//#include "/home/nammh/quartz/src/lib/pmalloc.h"
 
 #define LSB
 const size_t kMask = 256-1;
