@@ -1,39 +1,29 @@
 ## Introduction
+CCEH PMDK (Persistent Memory Development Kit) Version
 
-This "Hello" example explores the transactional object store, memory
-allocation, and transactions in the libpmemobj library.  Developers new to
-persistent memory programming may want to start with this library.  The goal is
-to demonstrate how to create a "Hello Persistent Memory!!!" program using the
-these functions to access the persistent memory and then reading back before
-displaying it to the stdout. 
 
 ## Build Instructions
 
-To build this sample, download/clone the pmdk-examples repository. A Makefile
-is provided. 
+To build this sample, download/clone this directory. run ./a.sh 
 
 ## How to Run
+usage:
 
-After building the binary, the code sample can be run with a statement such as
-the following:
+./test [-w|-d|-r] <PM save file> <hash_key_start_num> <hash_key_end_num>
 
-	$./manpage test 
 
-Below is an example of the result output:
+example:
 
-	$ ./hello_libpmemobj -w t
+To write hash key from 0 to 1000 on File1
 
-Write the (Hello Persistent Memory!!!) string to persistent-memory.
+./test -w ./File1 0 1000
 
-	$ ./hello_libpmemobj -r t
 
-Read the (Hello Persistent Memory!!!) string from persistent-memory.
+To read hash key from 0 to 1000 in File1
 
-	$ ./hello_libpmemobj -q t
+./test -r ./File1 0 1000
 
-Usage: ./hello_libpmemobj <-w/-r> <filename>
-	
-	$ ./hello_libpmemobj -r t
 
-Read the (Hello Persistent Memory!!!) string from persistent-memory.
-$ 
+To delete hash key from 0 to 500 in File1
+
+./test -d ./File1 0 500  

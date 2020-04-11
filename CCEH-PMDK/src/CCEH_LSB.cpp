@@ -312,33 +312,29 @@ RETRY:
 }
 
 
-CCEH::CCEH(const char* path, char flag)
+CCEH::CCEH(const char* path)
 {
-  if(flag=='w'){
-  init_pmem(path);
+  if(init_pmem(path)){
   constructor(0);
   size_t capacity = dir->capacity;
   for(unsigned i=0;i<capacity;i++){
      dir->_[i] = new Segment(pop, global_depth);
+     dir->segment_bind_pmem(i, dir->_[i]);
      dir->_[i]->pattern = i;    
   }
-  }else{
-   load_pmem(path);
   }
 }
 
-CCEH::CCEH(size_t initCap, const char* path, char flag)
+CCEH::CCEH(size_t initCap, const char* path)
 {
-  if(flag=='w'){
-  init_pmem(path);
+  if(init_pmem(path)){
   constructor(log2(initCap));
   size_t capacity = dir->capacity;
   for(unsigned i=0;i<capacity;i++){
      dir->_[i] = new Segment(pop, global_depth);
+     dir->segment_bind_pmem(i, dir->_[i]);
      dir->_[i]->pattern = i;    
   }
-  }else{
-    load_pmem(path);
   }
 }
 

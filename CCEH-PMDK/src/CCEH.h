@@ -6,7 +6,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <libpmemobj.h>
-
+#include <unistd.h>
 #include <cmath>
 #include <vector>
 #include "../util/pair.h"
@@ -205,8 +205,8 @@ public:
 
 class CCEH {
   public:
-    CCEH(const char*, char);
-    CCEH(size_t, const char*, char);
+    CCEH(const char*);
+    CCEH(size_t, const char*);
     ~CCEH(void);
     void Insert(Key_t&, Value_t);
     Value_t Get(Key_t&);
@@ -223,15 +223,31 @@ class CCEH {
     PMEMobjpool *pop;
     Directory* dir;
     size_t global_depth;
-    void init_pmem(const char* path){
-        pop = pmemobj_create(path, LAYOUT, PMEMOBJ_MIN_POOL, 0666);
-        if(pop==NULL){
- 		perror(path);
- 		exit(-1);
-        }
-	cceh_pmem = POBJ_ROOT(pop, struct CCEH_pmem);
-	POBJ_ALLOC(pop, &dir_pmem, struct Directory_pmem, sizeof(struct Directory_pmem), NULL,NULL);
-	D_RW(cceh_pmem)->directories = dir_pmem;
+    int init_pmem(const char* path){
+
+	if(access(path, F_OK) != 0){
+          pop = pmemobj_create(path, LAYOUT, PMEMOBJ_MIN_POOL*10, 0666);
+          if(pop==NULL){
+   		perror(path);
+   		exit(-1);
+          }
+  	  cceh_pmem = POBJ_ROOT(pop, struct CCEH_pmem);
+	  POBJ_ALLOC(pop, &dir_pmem, struct Directory_pmem, sizeof(struct Directory_pmem), NULL,NULL);
+	  D_RW(cceh_pmem)->directories = dir_pmem;
+	  return 1;
+	}else{
+   	  pop = pmemobj_open(path, LAYOUT);
+	  if(pop==NULL){
+	    perror(path);
+	    exit(-1);	
+	  }
+	  cceh_pmem = POBJ_ROOT(pop, struct CCEH_pmem);
+	  global_depth = D_RO(cceh_pmem)->global_depth;
+	  dir_pmem = D_RO(cceh_pmem)->directories;
+          dir = new Directory();
+	  dir->load_pmem(pop, dir_pmem);
+	  return 0;
+	}
     }
 
     void constructor(size_t global_depth_){
@@ -247,18 +263,6 @@ class CCEH {
       posix_memalign(&ret, 64, size);
       return ret;
     } 
-    void load_pmem(const char* path){
-	pop = pmemobj_open(path, LAYOUT);
-	if(pop==NULL){
-	  perror(path);
-	  exit(-1);	
-	}
-	cceh_pmem = POBJ_ROOT(pop, struct CCEH_pmem);
-	global_depth = D_RO(cceh_pmem)->global_depth;
-	dir_pmem = D_RO(cceh_pmem)->directories;
-        dir = new Directory();
-	dir->load_pmem(pop, dir_pmem);
-    }
 };
 
 #endif  // EXTENDIBLE_PTR_H_
