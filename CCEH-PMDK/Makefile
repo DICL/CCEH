@@ -1,15 +1,19 @@
 .PHONY: all clean
-.DEFAULT_GOAL := all
 
-CC=g++
-LIBS=-lrt -lm -lpmemobj
-CFLAGS=-O3 -std=c++11 -w 
-INCLUDES=-I./ 
+CXX := g++
+CFLAGS := -std=c++11 -I./ -lrt -O3
 
-all: main
+all: test
 
-main: 
-	$(CC) $(CFLAGS) -c src/CCEH_LSB.cpp -o src/CCEH_LSB.o $(LIBS) $(INCLUDES)
+test: src/test.cpp CCEH
+	$(CXX) $(CFLAGS) -o bin/cceh src/test.cpp src/CCEH.o -lpmemobj -lpmem -DINSERT -DSEARCH
+	$(CXX) $(CFLAGS) -o bin/cceh_search src/test.cpp src/CCEH.o -lpmemobj -lpmem -DSEARCH
+	$(CXX) $(CFLAGS) -o bin/ccehCoW src/test.cpp src/CCEH_CoW.o -lpmemobj -lpmem -DINSERT -DSEARCH
+	$(CXX) $(CFLAGS) -o bin/ccehCoW_search src/test.cpp src/CCEH_CoW.o -lpmemobj -lpmem -DSEARCH
 
-clean: 
-	rm -rf src/*.o
+CCEH: src/CCEH.h src/CCEH.cpp
+	$(CXX) $(CFLAGS) -c -o src/CCEH.o src/CCEH.cpp -DINPLACE -lpmemobj -lpmem
+	$(CXX) $(CFLAGS) -c -o src/CCEH_CoW.o src/CCEH.cpp -lpmemobj -lpmem
+	
+clean:
+	rm -rf src/*.o bin/* 
