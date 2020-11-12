@@ -2,13 +2,13 @@
 #define CCEH_H_
 
 #include <cstring>
+#include <vector>
 #include <cmath>
 #include <vector>
 #include <cstdlib>
+#include <pthread.h>
 #include <libpmemobj.h>
-
-#define CAS(_p, _u, _v) (__atomic_compare_exchange_n (_p, _u, _v, false, __ATOMIC_ACQUIRE, __ATOMIC_ACQUIRE))
-#define kCacheLineSize (64)
+#include "src/util.h"
 
 #define TOID_ARRAY(x) TOID(x)
 
@@ -30,7 +30,7 @@ struct Segment;
 POBJ_LAYOUT_BEGIN(HashTable);
 POBJ_LAYOUT_ROOT(HashTable, CCEH);
 POBJ_LAYOUT_TOID(HashTable, struct Directory);
-POBJ_LAYOUT_TOID(HashTable, struct Segment);
+POBJ_LAYOUT_ROOT(HashTable, struct Segment);
 POBJ_LAYOUT_TOID(HashTable, TOID(struct Segment));
 POBJ_LAYOUT_END(HashTable);
 
@@ -39,7 +39,9 @@ constexpr size_t kMask = (1 << kSegmentBits)-1;
 constexpr size_t kShift = kSegmentBits;
 constexpr size_t kSegmentSize = (1 << kSegmentBits) * 16 * 4;
 constexpr size_t kNumPairPerCacheLine = 4;
-constexpr size_t kNumCacheLine = 4;
+constexpr size_t kNumCacheLine = 8;
+constexpr size_t kCuckooThreshold = 16;
+//constexpr size_t kCuckooThreshold = 32;
 
 struct Segment{
     static const size_t kNumSlot = kSegmentSize/sizeof(Pair);
@@ -49,45 +51,105 @@ struct Segment{
 
     void initSegment(void){
 	for(int i=0; i<kNumSlot; ++i){
-	    pair[i].key = INVALID;
+	    bucket[i].key = INVALID;
 	}
 	local_depth = 0;
 	sema = 0;
-	//printf("[%s] called\n", __func__);
     }
 
     void initSegment(size_t depth){
 	for(int i=0; i<kNumSlot; ++i){
-	    pair[i].key = INVALID;
+	    bucket[i].key = INVALID;
 	}
 	local_depth = depth;
 	sema = 0;
-	//printf("[%s] called with %lld depth\n", __func__, depth);
+    }
+
+    bool suspend(void){
+	int64_t val;
+	do{
+	    val = sema;
+	    if(val < 0)
+		return false;
+	}while(!CAS(&sema, &val, -1));
+
+	int64_t wait = 0 - val - 1;
+	while(val && sema != wait){
+	    asm("nop");
+	}
+	return true;
+    }
+
+    bool lock(void){
+	int64_t val = sema;
+	while(val > -1){
+	    if(CAS(&sema, &val, val+1))
+		return true;
+	    val = sema;
+	}
+	return false;
+    }
+
+    void unlock(void){
+	int64_t val = sema;
+	while(!CAS(&sema, &val, val-1)){
+	    val = sema;
+	}
     }
 
     int Insert(PMEMobjpool*, Key_t&, Value_t, size_t, size_t);
-    void Insert4split(Key_t&, Value_t, size_t);
+    bool Insert4split(Key_t&, Value_t, size_t);
     TOID(struct Segment)* Split(PMEMobjpool*);
-
+    std::vector<std::pair<size_t, size_t>> find_path(size_t, size_t);
+    void execute_path(PMEMobjpool*, std::vector<std::pair<size_t, size_t>>&, Key_t&, Value_t);
+    void execute_path(std::vector<std::pair<size_t, size_t>>&, Pair);
     size_t numElement(void);
 
-    Pair pair[kNumSlot];
-    size_t local_depth;
+    Pair bucket[kNumSlot];
     int64_t sema = 0;
-    size_t pattern = 0;
+    size_t local_depth;
     
 };
 
 struct Directory{
     static const size_t kDefaultDepth = 10;
-    TOID_ARRAY(TOID(struct Segment)) segment;
-    //TOID(struct Segment)* segment;
-    //Segment** segment;
-    //TOID(void*) segment;
-    size_t capacity;
-    size_t depth;
-    bool lock;
-    int sema = 0;
+
+    TOID_ARRAY(TOID(struct Segment)) segment;	
+    int64_t sema = 0;
+    size_t capacity;		
+    size_t depth;	
+
+    bool suspend(void){
+	int64_t val;
+	do{
+	    val = sema;
+	    if(val < 0)
+		return false;
+	}while(!CAS(&sema, &val, -1));
+
+	int64_t wait = 0 - val - 1;
+	while(val && sema != wait){
+	    asm("nop");
+	}
+	return true;
+    }
+
+    bool lock(void){
+	int64_t val = sema;
+	while(val > -1){
+	    if(CAS(&sema, &val, val+1))
+		return true;
+	    val = sema;
+	}
+	return false;
+    }
+
+    void unlock(void){
+	int64_t val = sema;
+	while(!CAS(&sema, &val, val-1)){
+	    val = sema;
+	}
+    }
 
     Directory(void){ }
     ~Directory(void){ }
@@ -95,30 +157,14 @@ struct Directory{
     void initDirectory(void){
 	depth = kDefaultDepth;
 	capacity = pow(2, depth);
-	lock = false;
 	sema = 0;
-	printf("[%s] called\n", __func__);
     }
 
     void initDirectory(size_t _depth){
 	depth = _depth;
 	capacity = pow(2, _depth);
-	lock = false;
 	sema = 0;
-	printf("[%s] called with %lld depth\n", __func__, _depth);
     }
-
-    bool Acquire(void){
-	bool unlocked = false;
-	return CAS(&lock, &unlocked, true);
-    }
-
-    bool Release(void){
-	bool locked = true;
-	return CAS(&lock, &locked, false);
-    }
-
-    void LSBUpdate(PMEMobjpool*, int, int, int, int, TOID(struct Segment)*);
 };
 
 class CCEH{
@@ -129,14 +175,17 @@ class CCEH{
 	void initCCEH(PMEMobjpool*, size_t);
 
 	void Insert(PMEMobjpool*, Key_t&, Value_t);
+	bool InsertOnly(PMEMobjpool*, Key_t&, Value_t);	
 	bool Delete(Key_t&);
 	Value_t Get(Key_t&);
+	Value_t FindAnyway(Key_t&);
 
+	double Utilization(void);
 	size_t Capacity(void);
+	void Recovery(PMEMobjpool*);
 
+	bool crashed = true;
     private:
-	size_t global_depth;
-	//PMEMobjpool* pop;
 	TOID(struct Directory) dir;
 };
 
