@@ -9,11 +9,13 @@ CCEH-PMDK (Persistent Memory Development Kit) Version
 ```
 git clone https://github.com/DICL/CCEH
 cd CCEH/CCEH-PMDK
+mkdir bin
 make
 ```
 
 ## How to Run
 
 ```
-./bin/cceh path numData
+./bin/single_threaded_cceh path numData
+./bin/multi_threaded_cceh path numData numThreads
 ```
