@@ -194,12 +194,10 @@ void CCEH::Insert(PMEMobjpool* pop, Key_t& key, Value_t value){
     auto f_idx = (f_hash & kMask) * kNumPairPerCacheLine;
 
 RETRY:
-    auto dir_depth = D_RO(dir)->depth;
-
-    auto x = (f_hash >> (8*sizeof(f_hash) - dir_depth));
+    auto x = (f_hash >> (8*sizeof(f_hash) - D_RO(dir)->depth));
     auto target = D_RO(D_RO(dir)->segment)[x];
 
-    if(target.oid.off == 0){
+    if(!D_RO(target)){
 	std::this_thread::yield();
 	goto RETRY;
     }
@@ -210,7 +208,7 @@ RETRY:
 	goto RETRY;
     }
 
-    auto target_check = (f_hash >> (8*sizeof(f_hash) - dir_depth));
+    auto target_check = (f_hash >> (8*sizeof(f_hash) - D_RO(dir)->depth));
     if(D_RO(target) != D_RO(D_RO(D_RO(dir)->segment)[target_check])){
 	D_RW(target)->unlock();
 	std::this_thread::yield();
@@ -307,7 +305,7 @@ DIR_RETRY:
 	TOID(struct Directory) _dir;
 	POBJ_ALLOC(pop, &_dir, struct Directory, sizeof(struct Directory), NULL, NULL);
 	POBJ_ALLOC(pop, &D_RO(_dir)->segment, TOID(struct Segment), sizeof(TOID(struct Segment))*D_RO(dir)->capacity*2, NULL, NULL);
-	D_RW(_dir)->initDirectory(dir_depth+1);
+	D_RW(_dir)->initDirectory(D_RO(dir)->depth+1);
 
 	for(int i=0; i<D_RO(dir)->capacity; ++i){
 	    if(i == x){
@@ -409,9 +407,13 @@ RETRY:
 	asm("nop");
     }
 
-    auto dir_depth = D_RO(dir)->depth;
-    auto x = (f_hash >> (8*sizeof(f_hash) - dir_depth));
+    auto x = (f_hash >> (8*sizeof(f_hash) - D_RO(dir)->depth));
     auto target = D_RO(D_RO(dir)->segment)[x];
+
+    if(!D_RO(target)){
+	std::this_thread::yield();
+	goto RETRY;
+    }
 
 #ifdef INPLACE
     /* acquire segment shared lock */
@@ -421,8 +423,8 @@ RETRY:
     }
 #endif
 
-    auto target_check = (f_hash >> (8*sizeof(f_hash) - dir_depth));
-    if(target.oid.off != D_RO(D_RO(dir)->segment)[target_check].oid.off){
+    auto target_check = (f_hash >> (8*sizeof(f_hash) - D_RO(dir)->depth));
+    if(D_RO(target) != D_RO(D_RO(D_RO(dir)->segment)[target_check])){
 	D_RW(target)->unlock();
 	std::this_thread::yield();
 	goto RETRY;

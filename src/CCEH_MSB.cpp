@@ -182,9 +182,7 @@ void CCEH::Insert(Key_t& key, Value_t value) {
     auto f_idx = (f_hash & kMask) * kNumPairPerCacheLine;
 
 RETRY:
-    auto dir_depth = dir->depth;
-
-    auto x = (f_hash >> (8*sizeof(f_hash) - dir_depth));
+    auto x = (f_hash >> (8*sizeof(f_hash) - dir->depth));
     auto target = dir->_[x];
 
     if(!target){
@@ -198,7 +196,7 @@ RETRY:
 	goto RETRY;
     }
 
-    auto target_check = (f_hash >> (8*sizeof(f_hash) - dir_depth));
+    auto target_check = (f_hash >> (8*sizeof(f_hash) - dir->depth));
     if(target != dir->_[target_check]){
 	target->unlock();
 	std::this_thread::yield();
@@ -382,10 +380,13 @@ RETRY:
 	asm("nop");
     }
 
-    auto dir_depth = dir->depth;
-    auto x = (f_hash >> (8*sizeof(f_hash) - dir_depth)); 
+    auto x = (f_hash >> (8*sizeof(f_hash) - dir->depth)); 
     auto target = dir->_[x];
 
+    if(!target){
+	std::this_thread::yield();
+	goto RETRY;
+    }
     
 #ifdef INPLACE
     /* acquire segment shared lock */
@@ -395,7 +396,7 @@ RETRY:
     }
 #endif
 
-    auto target_check = (f_hash >> (8*sizeof(f_hash) - dir_depth));
+    auto target_check = (f_hash >> (8*sizeof(f_hash) - dir->depth));
     if(target != dir->_[target_check]){
 #ifdef INPLACE
 	target->unlock();
